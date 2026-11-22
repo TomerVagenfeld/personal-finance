@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>הוספה מהירה - ניהול כספים</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <meta name="theme-color" content="#662249">
+  <link rel="stylesheet" href="css/mobile.css">
+</head>
+<body>
+  <div id="app"></div>
+  <div id="toast"></div>
+
+  <!-- Shared modules from the main app — reused as-is, no mobile-specific fork. -->
+  <script src="../js/state.js"></script>
+  <script src="../js/accounts.js"></script>
+  <script src="../js/loans.js"></script>
+  <script src="../js/categories.js"></script>
+  <script src="../js/cards.js"></script>
+  <script src="../js/transactions.js"></script>
+  <script src="../js/ui/common.js"></script>
+
+  <!-- Mobile-only: offline queue, Drive sync, setup, this screen's UI. -->
+  <script src="js/pending-queue.js"></script>
+  <script src="js/local-mirror.js"></script>
+  <script src="js/drive-auth.js"></script>
+  <script src="js/drive-api.js"></script>
+  <script src="js/drive-picker.js"></script>
+  <script src="js/setup.js"></script>
+  <script src="js/sync.js"></script>
+  <script src="js/mobile-app.js"></script>
+</body>
+</html>
