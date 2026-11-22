@@ -10,7 +10,7 @@ PF.mobileSetup = (function () {
   // Set this once after creating the OAuth Client ID in Google Cloud
   // Console (see the setup instructions) — hardcoding it here keeps the
   // "no backend" property honest (nothing server-side to configure).
-  const GOOGLE_CLIENT_ID = "644525687916-5vl9li380vunv5g1babnoqkm53e3r32o.apps.googleusercontent.com";
+  const GOOGLE_CLIENT_ID = "644525687916-i9hrquu0mo9osjfqtpncr2a3ap1hdfj9.apps.googleusercontent.com";
   const GOOGLE_API_KEY = "AIzaSyBMP4unONTMEOHdY63g_N2YZ9zz0BlkGCU";
 
   function getConfig() {
