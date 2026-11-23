@@ -47,7 +47,7 @@ PF.views.dashboard = function (root) {
   const realTotalNote = realTotal !== liquidTotal
     ? h("div", { class: "kpi-breakdown-row", style: "margin-top:4px" }, [h("span", {}, ["בפועל בחשבונות כרגע"]), h("b", {}, [money(realTotal)])])
     : null;
-  statsGrid.appendChild(kpiTile("total", "יתרה כוללת", liquidTotal, totalBreakdown.length ? totalBreakdown.map(a => [a.name, PF.accounts.balance(a.id)]) : null, realTotalNote));
+  statsGrid.appendChild(kpiTile("total", "יתרה כוללת", liquidTotal, totalBreakdown.length ? totalBreakdown.map(a => [a.name, PF.accounts.balance(a.id), PF.accounts.realCurrentBalance(a.id)]) : null, realTotalNote));
 
   // Loan debt, broken down the same way if there's more than one loan.
   const loans = PF.loans.all();
@@ -91,7 +91,10 @@ PF.views.dashboard = function (root) {
         h("span", { class: "value " + (value >= 0 ? "positive" : "negative") }, [money(value)]),
         extraNote || null,
         breakdown ? h("div", { class: "kpi-breakdown" },
-          breakdown.map(([name, val]) => h("div", { class: "kpi-breakdown-row" }, [h("span", {}, [name]), h("b", {}, [money(val)])]))
+          breakdown.map(([name, val, realVal]) => h("div", { class: "kpi-breakdown-row" }, [
+            h("span", {}, [name]),
+            h("b", {}, [realVal != null && realVal !== val ? `${money(val)} (בבנק כרגע: ${money(realVal)})` : money(val)])
+          ]))
         ) : null
       ])
     ]);
