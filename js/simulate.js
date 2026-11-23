@@ -314,7 +314,7 @@ PF.simulate = (function () {
           id: scenario.nextId++, kind: "income", type: "income",
           label: "מלגה (חלק ב')", amount: 4500,
           accountId: bankAcc.id, categoryId: cat ? cat.id : null,
-          included: true, recurring: true, month: scenario.targetMonth, day: 10
+          included: true, recurring: true, month: scenario.targetMonth, day: PF.CARD_BILLING_DAY
         });
         return;
       }
@@ -373,7 +373,7 @@ PF.simulate = (function () {
         label: `${latest.payee} (תשלום ${latest.installmentIndex + 1} מתוך ${latest.installmentTotal})`,
         amount: latest.amount,
         accountId: latest.accountId, categoryId: latest.categoryId,
-        included: true, recurring: true, month: scenario.targetMonth, durationMonths: remaining, day: 10
+        included: true, recurring: true, month: scenario.targetMonth, durationMonths: remaining, day: PF.CARD_BILLING_DAY
       });
     });
 
@@ -390,7 +390,7 @@ PF.simulate = (function () {
         id: scenario.nextId++, kind: "expense", type: "expense",
         label: c.name, amount: c.avgAmount,
         accountId: bankAcc.id, categoryId: c.categoryId,
-        included: true, recurring: true, month: scenario.targetMonth, day: 10
+        included: true, recurring: true, month: scenario.targetMonth, day: PF.CARD_BILLING_DAY
       });
     });
     if (transportCat) {
@@ -403,7 +403,7 @@ PF.simulate = (function () {
           id: scenario.nextId++, kind: "expense", type: "expense",
           label: "כביש 6 / חוצה ישראל", amount: highway6Avg,
           accountId: bankAcc.id, categoryId: transportCat.id,
-          included: true, recurring: true, month: scenario.targetMonth, day: 10
+          included: true, recurring: true, month: scenario.targetMonth, day: PF.CARD_BILLING_DAY
         });
       }
       if (restAvg > 0) {
@@ -411,7 +411,7 @@ PF.simulate = (function () {
           id: scenario.nextId++, kind: "expense", type: "expense",
           label: "תחבורה - שאר (תח\"צ, מוניות, חניה, טיפולים)", amount: restAvg,
           accountId: bankAcc.id, categoryId: transportCat.id,
-          included: true, recurring: true, month: scenario.targetMonth, day: 10
+          included: true, recurring: true, month: scenario.targetMonth, day: PF.CARD_BILLING_DAY
         });
       }
     }
@@ -426,7 +426,7 @@ PF.simulate = (function () {
         id: scenario.nextId++, kind: "loan", type: "expense",
         label: `תשלום צפוי: ${loan.name}`, amount: avgPayment,
         accountId: bankAcc.id, categoryId: loanCat ? loanCat.id : null, loanId: loan.id,
-        included: true, recurring: true, month: scenario.targetMonth, day: 10
+        included: true, recurring: true, month: scenario.targetMonth, day: PF.CARD_BILLING_DAY
       });
     });
   }

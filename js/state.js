@@ -74,12 +74,12 @@ function addMonths(month, n) {
 }
 PF.addMonths = addMonths;
 
-// Every credit card in this app is assumed to bill on the 10th of the month
-// AFTER the purchase (e.g. a November charge is pulled from the bank on
-// December 10th) — the same assumption the Simulate view uses for its
-// estimated expense/loan timing. Used to tell a "real bank balance right
-// now" apart from the computed ledger balance, which deducts a card charge
-// the moment it's logged rather than when it's actually billed.
+// The Simulate view's day-of-month estimates assume every credit card bills
+// on the 10th of the month (e.g. a November charge is estimated to be
+// pulled from the bank on the 10th). NOT used for figuring out whether a
+// REAL already-logged card charge has actually cleared yet — that turned
+// out not to be a fixed day-offset at all; see
+// PF.accounts.pendingCardCharges() for the (data-driven) real answer.
 PF.CARD_BILLING_DAY = 10;
 
 function emptyData() {

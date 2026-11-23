@@ -25,20 +25,26 @@ PF.accounts = {
   // balance() deducts a card purchase the moment it's logged — the
   // deliberate "ledger" approach real budgeting tools use, so you can't
   // accidentally re-spend money you've already committed before the real
-  // bill clears (see PF.CARD_BILLING_DAY). But that means it DOESN'T match
-  // what your bank's own website shows today, since the card issuer hasn't
-  // actually pulled that money yet. This sums exactly the card charges still
-  // sitting in that gap — logged here, but not yet billed.
+  // bill clears. But that means it DOESN'T match what your bank's own
+  // website shows today, since the card issuer hasn't actually pulled that
+  // money yet.
+  //
+  // Figuring out WHICH card charges have actually cleared turned out not to
+  // be a fixed "bills N days later" rule (verified against real data — a
+  // generic cutoff was off by over ₪1,700). The real signal is simpler and
+  // self-correcting: a bank-statement import's rows have no `cardId` (the
+  // bank doesn't know which physical card you used) and represent money
+  // that's definitely already moved; a card-statement import's rows DO have
+  // a `cardId` and may be ahead of what's been bank-confirmed yet. So
+  // anything card-tagged dated AFTER the most recent bank-confirmed
+  // transaction on this account is still pending — it only clears once a
+  // later bank import (or manual entry) moves that cutoff forward.
   pendingCardCharges(accountId) {
     const data = PF.store.data;
-    const today = PF.todayStr();
-    const total = data.transactions
-      .filter(t => t.type === "expense" && t.accountId === accountId && t.cardId)
-      .filter(t => {
-        const billingMonth = PF.addMonths(t.date.slice(0, 7), 1);
-        const billingDate = `${billingMonth}-${String(PF.CARD_BILLING_DAY).padStart(2, "0")}`;
-        return today < billingDate;
-      })
+    const expenses = data.transactions.filter(t => t.type === "expense" && t.accountId === accountId);
+    const lastConfirmedDate = expenses.filter(t => !t.cardId).reduce((max, t) => (t.date > max ? t.date : max), "0000-00-00");
+    const total = expenses
+      .filter(t => t.cardId && t.date > lastConfirmedDate)
       .reduce((sum, t) => sum + t.amount, 0);
     return Math.round(total * 100) / 100;
   },
