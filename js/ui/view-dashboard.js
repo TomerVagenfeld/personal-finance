@@ -15,9 +15,13 @@ PF.views.dashboard = function (root) {
   // investments. Loan debt (not an account — see PF.loans) and the shared
   // account (not solely yours) are each tracked on their own instead,
   // deliberately kept OUT of this headline number by design — see
-  // PF.accounts.liquidTotal()/PF.loans.totalRemaining()/PF.accounts.sharedTotal().
+  // PF.accounts.balance()/PF.loans.totalRemaining()/PF.accounts.sharedTotal().
   // A loan payment still lowers this total, same as any other expense.
-  const liquidTotal = PF.accounts.liquidTotal();
+  //
+  // Deliberately just the plain ledger number, kept accurate by manual
+  // reconciliation (see view-accounts.js) rather than any automatic
+  // "pending card charges" estimate — that was tried and repeatedly produced
+  // wrong numbers once spending got untidy.
   const loanTotal = PF.loans.totalRemaining();
   const sharedTotal = PF.accounts.sharedTotal();
   const statsGrid = h("div", { class: "grid cols-2 kpi-grid" });
@@ -39,34 +43,9 @@ PF.views.dashboard = function (root) {
   // here too would just repeat the same numbers twice.
   const liquidAccounts = data.accounts.filter(a => !PF.accounts.EXCLUDED_FROM_TOTAL.includes(a.type));
   const totalBreakdown = liquidAccounts.filter(a => a.type !== "cash" && a.type !== "bit");
-  // liquidTotal already deducts a card purchase the moment it's logged (the
-  // right number for "what's really free to spend"). realTotal is the OTHER
-  // total — what your accounts would ACTUALLY show right now, combined. Shown
-  // as a clear "before / after" pair instead of one number with a buried
-  // footnote, since the two can look contradictory without that framing.
-  const realTotal = Math.round(liquidAccounts.reduce((s, a) => s + PF.accounts.realCurrentBalance(a.id), 0) * 100) / 100;
-  statsGrid.appendChild(h("div", { class: "kpi-tile kpi-tile-wide" }, [
-    h("div", { class: "kpi-icon kpi-icon-total", html: kpiIconSvg("total") }),
-    h("div", { class: "kpi-body" }, [
-      h("span", { class: "label" }, ["יתרה כוללת"]),
-      h("div", { class: "kpi-pair" }, [
-        h("div", {}, [h("span", { class: "kpi-sublabel" }, ["בבנק כרגע"]), h("span", { class: "value " + (realTotal >= 0 ? "positive" : "negative") }, [money(realTotal)])]),
-        h("div", {}, [h("span", { class: "kpi-sublabel" }, ["אחרי חיובי כרטיס שטרם נגבו"]), h("span", { class: "value " + (liquidTotal >= 0 ? "positive" : "negative") }, [money(liquidTotal)])])
-      ]),
-      // Per-account math — this is where "how does 1,554 become 716" is
-      // actually shown, not just asserted: real balance minus whatever card
-      // spending hasn't left that account yet equals the ledger figure.
-      totalBreakdown.length ? h("div", { class: "kpi-breakdown" }, totalBreakdown.map(a => {
-        const ledger = PF.accounts.balance(a.id);
-        const pending = PF.accounts.pendingCardCharges(a.id);
-        const real = PF.accounts.realCurrentBalance(a.id);
-        return h("div", { class: "kpi-breakdown-row" }, [
-          h("span", {}, [a.name]),
-          h("b", {}, [pending ? `${money(real)} − ${money(pending)} = ${money(ledger)}` : money(ledger)])
-        ]);
-      })) : null
-    ])
-  ]));
+  const liquidTotal = PF.accounts.liquidTotal();
+  statsGrid.appendChild(kpiTile("total", "יתרה כוללת", liquidTotal,
+    totalBreakdown.length ? totalBreakdown.map(a => [a.name, PF.accounts.balance(a.id)]) : null));
 
   // The OTHER forward-looking number, distinct from both figures in the tile
   // above: the full open credit-card commitment across every card, straight

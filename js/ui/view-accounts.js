@@ -22,8 +22,15 @@ PF.views.accounts = function (root) {
   root.appendChild(addLoanForm());
 
   function accountCard(acc) {
+    // Plain ledger balance, kept accurate purely by manual reconciliation
+    // (the "עדכן יתרה" button below) — same mechanism already used for
+    // cash/Bit/loans. An earlier version tried to AUTOMATICALLY infer "what
+    // the bank shows right now" from transaction-date heuristics
+    // (pendingCardCharges/realCurrentBalance); that repeatedly produced wrong
+    // numbers once spending got untidy (untagged imports, re-imports,
+    // multi-card timing), so it's gone — when you check the real balance,
+    // just type it in below and it stays accurate until the next real change.
     const balance = PF.accounts.balance(acc.id);
-    const pendingCard = PF.accounts.pendingCardCharges(acc.id);
     const newBalanceInput = h("input", { type: "number", step: "0.01", placeholder: "יתרה בפועל" });
     const isShared = acc.type === "shared_bank";
     const transferredIn = isShared ? PF.accounts.transfersIn(acc.id) : 0;
@@ -37,19 +44,9 @@ PF.views.accounts = function (root) {
         h("button", { class: "small", onclick: () => removeAccount(acc.id) }, ["מחק"])
       ]),
       h("div", { class: "stat", style: "margin:10px 0" }, [
-        h("span", { class: "label" }, ["יתרה נוכחית (מחושבת)"]),
+        h("span", { class: "label" }, ["יתרה נוכחית"]),
         h("span", { class: "value " + (balance >= 0 ? "positive" : "negative") }, [money(balance)])
       ]),
-      // "יתרה נוכחית" above already deducted card purchases the moment
-      // they were logged (the right approach for knowing what's really free
-      // to spend). This is the OTHER question: what your bank's own website
-      // shows today, before the card issuer actually pulls that money — see
-      // PF.accounts.pendingCardCharges() for how that's identified, verified
-      // directly against a real bank statement export.
-      pendingCard ? h("div", { class: "stat", style: "margin:0 0 10px" }, [
-        h("span", { class: "label" }, [`יתרה בבנק כרגע (לפי חיובי כרטיס פתוחים של ${money(pendingCard)} שטרם נגבו)`]),
-        h("span", { class: "value" }, [money(PF.accounts.realCurrentBalance(acc.id))])
-      ]) : null,
       isShared ? h("div", { class: "row" }, [
         h("div", { class: "stat" }, [
           h("span", { class: "label" }, ["מזה, הועברתי על ידי"]),

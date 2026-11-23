@@ -25,52 +25,21 @@ PF.accounts = {
   // balance() deducts a card purchase the moment it's logged — the
   // deliberate "ledger" approach real budgeting tools use, so you can't
   // accidentally re-spend money you've already committed before the real
-  // bill clears. But that means it DOESN'T match what your bank's own
-  // website shows today, since the card issuer hasn't actually pulled that
-  // money yet.
-  //
-  // Verified directly against a real bank statement export: the right
-  // cutoff isn't a fixed billing day, and it isn't "any non-card-tagged
-  // expense" either (too easily thrown off by an ordinary cash purchase
-  // that happens to lack a cardId) — it's the most recent transaction on
-  // this account that's independently known to be real: income, a transfer,
-  // or an explicit balance adjustment (a reconciliation to a confirmed
-  // figure). Everything card-tagged dated AFTER that point was logged ahead
-  // of its actual bank settlement, so it's still pending. This reproduced
-  // the real bank balance to the cent on the one case it was checked
-  // against — see the account's own ledger-as-of-that-date, which landed on
-  // the exact figure the bank's statement showed for that day.
-  pendingCardCharges(accountId) {
-    const data = PF.store.data;
-    const confirmedEvents = data.transactions.filter(t =>
-      (t.accountId === accountId && (t.type === "income" || (t.type === "expense" && t.isAdjustment))) ||
-      (t.type === "transfer" && (t.fromAccountId === accountId || t.toAccountId === accountId))
-    );
-    const cutoff = confirmedEvents.reduce((max, t) => (t.date > max ? t.date : max), "0000-00-00");
-    const total = data.transactions
-      .filter(t => t.type === "expense" && t.accountId === accountId && t.cardId && t.date > cutoff)
-      .reduce((sum, t) => sum + t.amount, 0);
-    return Math.round(total * 100) / 100;
-  },
-
-  // "What would my bank's own website show me right now" — balance() plus
-  // whatever card spending hasn't actually left the account yet (per the
-  // manually reconciled figure).
-  realCurrentBalance(accountId) {
-    return Math.round((PF.accounts.balance(accountId) + PF.accounts.pendingCardCharges(accountId)) * 100) / 100;
-  },
+  // bill clears. That won't match your bank's own website until the card
+  // issuer actually pulls that money — keep it accurate the same way
+  // cash/Bit/loans already are: reconcile to the real figure when you check
+  // it (see adjustBalanceTo() below). An earlier version tried to infer
+  // "what the bank shows right now" automatically from transaction-date
+  // heuristics; that repeatedly produced wrong numbers once spending got
+  // untidy (untagged imports, re-imports, multi-card timing), so it's gone.
 
   // The TOTAL open credit-card commitment across every card ever used on this
-  // account — a different question from pendingCardCharges() above. That one
-  // only answers "what's changed since my last balance check-in"; this one is
-  // "how much will get pulled from the bank in one lump sum on the next
-  // billing day," straight from each card's own current-cycle statement
+  // account — "how much will get pulled from the bank in one lump sum on the
+  // next billing day," straight from each card's own current-cycle statement
   // (card.pendingAmount/pendingAsOf, set on import — see
   // PF.cards.update()/js/ui/view-import.js). Real, declared data from the
-  // card issuer, not something inferred from transaction dates — those two
-  // numbers can legitimately differ by a lot (a reconciliation can fold in
-  // commitment that predates it), which is exactly why both are shown rather
-  // than picked as "the" right one.
+  // card issuer, shown as its own figure rather than folded into any balance
+  // math.
   upcomingCardBill(accountId) {
     const data = PF.store.data;
     const cardIds = new Set(data.transactions.filter(t => t.accountId === accountId && t.cardId).map(t => t.cardId));
