@@ -27,6 +27,13 @@ PF.cards = {
     PF.store.touch();
   },
 
+  update(id, patch) {
+    const card = PF.cards.byId(id);
+    if (!card) return;
+    Object.assign(card, patch);
+    PF.store.touch();
+  },
+
   remove(id) {
     const inUse = PF.store.data.transactions.some(t => t.cardId === id);
     if (inUse) throw new Error("לא ניתן למחוק כרטיס שיש בו תנועות - הסירו את השיוך מהתנועות קודם");

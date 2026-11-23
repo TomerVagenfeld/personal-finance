@@ -266,6 +266,16 @@ PF.views.import = function (root) {
       };
     });
     PF.transactions.addMany(toAdd);
+    // A cal_card file is always that card's CURRENT open-cycle statement (its
+    // total matches the card issuer's own "amount due next billing" exactly,
+    // even though most rows in it are usually already-imported duplicates) —
+    // so its total is recorded as that card's live "upcoming bill" figure,
+    // independent of which specific rows were newly added here. See
+    // PF.accounts.upcomingCardBill().
+    if (batch.profileId === "cal_card" && batch.cardId) {
+      const cycleTotal = Math.round(batch.rows.reduce((s, r) => s + (r.type === "income" ? -r.amount : r.amount), 0) * 100) / 100;
+      PF.cards.update(batch.cardId, { pendingAmount: cycleTotal, pendingAsOf: PF.todayStr() });
+    }
     const skipped = batch.rows.filter(r => r.suggestTransfer && r.skipAsSettlement).length;
     PF.ui.toast(`יובאו ${toAdd.length} תנועות מ-${batch.fileName}` + (skipped ? ` (${skipped} דולגו - כרטיס אשראי)` : ""));
     batches.splice(idx, 1);

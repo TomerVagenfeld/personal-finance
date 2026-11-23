@@ -27,7 +27,8 @@ PF.views.dashboard = function (root) {
     loan: '<path d="M4 10h16"/><path d="M6 10V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v4"/><rect x="4" y="10" width="16" height="8" rx="2"/>',
     shared: '<circle cx="8" cy="8" r="3"/><circle cx="17" cy="9" r="2.6"/><path d="M3 20c0-3 2.5-5 5-5s5 2 5 5"/><path d="M13.5 15.2c2 .3 3.5 2 3.5 4.3"/>',
     cash: '<rect x="3" y="7" width="18" height="11" rx="2"/><circle cx="12" cy="12.5" r="2.6"/>',
-    bit: '<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/>'
+    bit: '<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/>',
+    cardbill: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/>'
   };
   function kpiIconSvg(name) {
     return `<svg class="kpi-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${KPI_ICONS[name] || ""}</svg>`;
@@ -66,6 +67,29 @@ PF.views.dashboard = function (root) {
       })) : null
     ])
   ]));
+
+  // The OTHER forward-looking number, distinct from both figures in the tile
+  // above: the full open credit-card commitment across every card, straight
+  // from each card's own current-cycle statement (not inferred from
+  // transaction dates) — see PF.accounts.upcomingCardBill(). Only shown once
+  // at least one card has that data (i.e. after a current-cycle statement's
+  // been imported at least once).
+  const cardBillsByAccount = liquidAccounts.map(a => ({ account: a, bill: PF.accounts.upcomingCardBill(a.id) })).filter(x => x.bill);
+  if (cardBillsByAccount.length) {
+    const grandTotal = Math.round(cardBillsByAccount.reduce((s, x) => s + x.bill.total, 0) * 100) / 100;
+    const allCardRows = cardBillsByAccount.flatMap(x => x.bill.cards);
+    const billingDate = PF.accounts.nextCardBillingDate();
+    const billingDay = Number(billingDate.slice(8, 10));
+    const billingMonthName = PF.simulate.monthLabel(billingDate.slice(0, 7)).split(" ")[0];
+    statsGrid.appendChild(h("div", { class: "kpi-tile" }, [
+      h("div", { class: "kpi-icon kpi-icon-cardbill", html: kpiIconSvg("cardbill") }),
+      h("div", { class: "kpi-body" }, [
+        h("span", { class: "label" }, [`חיוב קרוב בכרטיסים (${billingDay} ב${billingMonthName})`]),
+        h("span", { class: "value negative" }, [money(grandTotal)]),
+        h("div", { class: "kpi-breakdown" }, allCardRows.map(c => h("div", { class: "kpi-breakdown-row" }, [h("span", {}, [c.name]), h("b", {}, [money(c.amount)])])))
+      ])
+    ]));
+  }
 
   // Loan debt, broken down the same way if there's more than one loan.
   const loans = PF.loans.all();

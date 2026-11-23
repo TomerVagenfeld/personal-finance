@@ -60,6 +60,36 @@ PF.accounts = {
     return Math.round((PF.accounts.balance(accountId) + PF.accounts.pendingCardCharges(accountId)) * 100) / 100;
   },
 
+  // The TOTAL open credit-card commitment across every card ever used on this
+  // account — a different question from pendingCardCharges() above. That one
+  // only answers "what's changed since my last balance check-in"; this one is
+  // "how much will get pulled from the bank in one lump sum on the next
+  // billing day," straight from each card's own current-cycle statement
+  // (card.pendingAmount/pendingAsOf, set on import — see
+  // PF.cards.update()/js/ui/view-import.js). Real, declared data from the
+  // card issuer, not something inferred from transaction dates — those two
+  // numbers can legitimately differ by a lot (a reconciliation can fold in
+  // commitment that predates it), which is exactly why both are shown rather
+  // than picked as "the" right one.
+  upcomingCardBill(accountId) {
+    const data = PF.store.data;
+    const cardIds = new Set(data.transactions.filter(t => t.accountId === accountId && t.cardId).map(t => t.cardId));
+    const cards = data.cards.filter(c => cardIds.has(c.id) && c.pendingAmount);
+    if (!cards.length) return null;
+    const total = Math.round(cards.reduce((s, c) => s + c.pendingAmount, 0) * 100) / 100;
+    const asOf = cards.reduce((max, c) => (c.pendingAsOf && c.pendingAsOf > max ? c.pendingAsOf : max), "0000-00-00");
+    return { total, asOf, cards: cards.map(c => ({ name: c.name, amount: c.pendingAmount })) };
+  },
+
+  // Cosmetic label only ("your next card bill is around DD/MM") — never used
+  // in any balance math, see PF.CARD_BILLING_DAY's own note for why.
+  nextCardBillingDate() {
+    const today = PF.todayStr();
+    const [y, m, d] = today.split("-").map(Number);
+    const month = d < PF.CARD_BILLING_DAY ? `${y}-${String(m).padStart(2, "0")}` : PF.addMonths(`${y}-${String(m).padStart(2, "0")}`, 1);
+    return `${month}-${String(PF.CARD_BILLING_DAY).padStart(2, "0")}`;
+  },
+
   // True net worth: every tracked account, minus whatever's still owed on
   // any loan (a loan isn't an account — see PF.loans — but it's still debt).
   netWorth() {

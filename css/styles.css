@@ -175,6 +175,7 @@ main#view {
 .kpi-icon-shared { background: linear-gradient(135deg, var(--c-purple), var(--c-navy)); }
 .kpi-icon-cash { background: linear-gradient(135deg, var(--c-orange), var(--c-rose)); }
 .kpi-icon-bit { background: linear-gradient(135deg, var(--c-orange), #d98a43); }
+.kpi-icon-cardbill { background: linear-gradient(135deg, var(--c-navy), #4a5a78); }
 
 .kpi-body { flex: 1 1 auto; min-width: 0; }
 .kpi-body .label { font-size: 12px; color: var(--muted); font-weight: 600; }
