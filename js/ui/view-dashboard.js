@@ -38,7 +38,16 @@ PF.views.dashboard = function (root) {
   // here too would just repeat the same numbers twice.
   const liquidAccounts = data.accounts.filter(a => !PF.accounts.EXCLUDED_FROM_TOTAL.includes(a.type));
   const totalBreakdown = liquidAccounts.filter(a => a.type !== "cash" && a.type !== "bit");
-  statsGrid.appendChild(kpiTile("total", "יתרה כוללת", liquidTotal, totalBreakdown.length ? totalBreakdown.map(a => [a.name, PF.accounts.balance(a.id)]) : null));
+  // liquidTotal already deducts a card purchase the moment it's logged (the
+  // right number for "what's really free to spend"). This is the OTHER
+  // total — what your accounts would ACTUALLY show right now, combined —
+  // only shown when it differs, i.e. some account has a card charge still
+  // open (see PF.accounts.pendingCardCharges/realCurrentBalance).
+  const realTotal = Math.round(liquidAccounts.reduce((s, a) => s + PF.accounts.realCurrentBalance(a.id), 0) * 100) / 100;
+  const realTotalNote = realTotal !== liquidTotal
+    ? h("div", { class: "kpi-breakdown-row", style: "margin-top:4px" }, [h("span", {}, ["בפועל בחשבונות כרגע"]), h("b", {}, [money(realTotal)])])
+    : null;
+  statsGrid.appendChild(kpiTile("total", "יתרה כוללת", liquidTotal, totalBreakdown.length ? totalBreakdown.map(a => [a.name, PF.accounts.balance(a.id)]) : null, realTotalNote));
 
   // Loan debt, broken down the same way if there's more than one loan.
   const loans = PF.loans.all();
@@ -74,12 +83,13 @@ PF.views.dashboard = function (root) {
 
   root.appendChild(h("div", { class: "card" }, [h("h2", {}, ["סקירה כללית"]), statsGrid]));
 
-  function kpiTile(iconName, label, value, breakdown) {
+  function kpiTile(iconName, label, value, breakdown, extraNote) {
     return h("div", { class: "kpi-tile" }, [
       h("div", { class: `kpi-icon kpi-icon-${iconName}`, html: kpiIconSvg(iconName) }),
       h("div", { class: "kpi-body" }, [
         h("span", { class: "label" }, [label]),
         h("span", { class: "value " + (value >= 0 ? "positive" : "negative") }, [money(value)]),
+        extraNote || null,
         breakdown ? h("div", { class: "kpi-breakdown" },
           breakdown.map(([name, val]) => h("div", { class: "kpi-breakdown-row" }, [h("span", {}, [name]), h("b", {}, [money(val)])]))
         ) : null

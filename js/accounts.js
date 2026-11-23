@@ -29,26 +29,28 @@ PF.accounts = {
   // website shows today, since the card issuer hasn't actually pulled that
   // money yet.
   //
-  // Figuring out WHICH logged charges have actually cleared turned out to
-  // have no reliable automatic signal — neither a fixed "bills N days
-  // later" rule nor a cardId-based heuristic survived checking against real
-  // data (both were off by thousands of shekels, because historical imports
-  // tagged `cardId` inconsistently and there's no single "paid the card
-  // company" transaction to anchor on). So this is a plain manual
-  // reconciliation instead — same pattern as adjustBalanceTo() — you read
-  // the real pending total off the card company's own site and tell the app,
-  // same as updating any other balance.
+  // Verified directly against a real bank statement export: the right
+  // cutoff isn't a fixed billing day, and it isn't "any non-card-tagged
+  // expense" either (too easily thrown off by an ordinary cash purchase
+  // that happens to lack a cardId) — it's the most recent transaction on
+  // this account that's independently known to be real: income, a transfer,
+  // or an explicit balance adjustment (a reconciliation to a confirmed
+  // figure). Everything card-tagged dated AFTER that point was logged ahead
+  // of its actual bank settlement, so it's still pending. This reproduced
+  // the real bank balance to the cent on the one case it was checked
+  // against — see the account's own ledger-as-of-that-date, which landed on
+  // the exact figure the bank's statement showed for that day.
   pendingCardCharges(accountId) {
-    const acc = PF.store.data.accounts.find(a => a.id === accountId);
-    return (acc && acc.pendingCardCharges) || 0;
-  },
-
-  setPendingCardCharges(accountId, amount) {
-    const acc = PF.store.data.accounts.find(a => a.id === accountId);
-    if (!acc) return;
-    acc.pendingCardCharges = Math.round((Number(amount) || 0) * 100) / 100;
-    acc.pendingCardChargesAsOf = PF.todayStr();
-    PF.store.touch();
+    const data = PF.store.data;
+    const confirmedEvents = data.transactions.filter(t =>
+      (t.accountId === accountId && (t.type === "income" || (t.type === "expense" && t.isAdjustment))) ||
+      (t.type === "transfer" && (t.fromAccountId === accountId || t.toAccountId === accountId))
+    );
+    const cutoff = confirmedEvents.reduce((max, t) => (t.date > max ? t.date : max), "0000-00-00");
+    const total = data.transactions
+      .filter(t => t.type === "expense" && t.accountId === accountId && t.cardId && t.date > cutoff)
+      .reduce((sum, t) => sum + t.amount, 0);
+    return Math.round(total * 100) / 100;
   },
 
   // "What would my bank's own website show me right now" — balance() plus

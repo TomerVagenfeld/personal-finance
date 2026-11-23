@@ -57,10 +57,23 @@ PF.loans = {
     PF.store.touch();
   },
 
-  // Reconcile a manual "how much do I still owe" reading to `targetRemaining`
-  // (a negative number, same sign convention as remaining()) by inserting an
-  // adjustment expense for the delta — same Quicken/YNAB-style reconciliation
-  // PF.accounts.adjustBalanceTo() does for a real account.
+  // Reconcile a manual "how much do I still owe" reading (e.g. off the
+  // lender's own amortization table) to `targetRemaining` (a negative
+  // number, same sign convention as remaining()) by inserting an adjustment
+  // expense for the delta, tagged with loanId only.
+  //
+  // Deliberately NOT tied to any account (no accountId) — unlike
+  // PF.accounts.adjustBalanceTo() for a real account (where "the balance is
+  // off" usually DOES mean an unlogged real transaction, like forgotten cash
+  // spending), a loan's remaining balance being off is much more likely to
+  // be a bookkeeping correction (a stale starting estimate, an average that
+  // didn't match the lender's real schedule) than an actual payment that
+  // just happened — confirmed by a real case where this wrongly deducted
+  // ~₪4,069 from the user's bank balance for money that never left it. A
+  // real loan payment already gets captured normally (imported as its own
+  // expense transaction, or the Simulate view's own estimate) — if the user
+  // separately knows they made an extra, not-yet-logged real payment, that
+  // belongs in a plain expense entry on the account it left, not here.
   adjustTo(loanId, targetRemaining, date) {
     const loan = PF.loans.byId(loanId);
     if (!loan) return null;
@@ -68,13 +81,11 @@ PF.loans = {
     const delta = Math.round((targetRemaining - current) * 100) / 100;
     if (delta === 0) return null;
     const loanCat = PF.categories.findByName("הלוואה", "expense") || PF.categories.add("הלוואה", "expense");
-    const bankAcc = PF.store.data.accounts.find(a => a.type === "bank") || PF.store.data.accounts[0];
     const txn = {
       id: PF.uid(),
       date: date || PF.todayStr(),
       amount: delta,
       type: "expense",
-      accountId: bankAcc ? bankAcc.id : null,
       categoryId: loanCat.id,
       loanId,
       isAdjustment: true,
