@@ -266,7 +266,14 @@ PF.simulate = (function () {
   // to them survive a reseed — a v3 scenario's installment items lack those
   // fields and would otherwise end up duplicated (old kind:"expense" copy
   // alongside a fresh kind:"installment" one for the same plan).
-  const STORAGE_KEY = "pf_simulation_scenario_v4";
+  // Bumped again to v5 when categories got merged (מסעדות into פנאי בילוי,
+  // אנרגיה into תחבורה, ריהוט ובית into קניות אונליין) — a persisted v4
+  // scenario still has one item per OLD category, each pointing at a
+  // categoryId that may no longer exist, and reloading the page alone
+  // doesn't reseed (only changing the target month or hitting "אפס לברירת
+  // מחדל" does) — so without this bump, the merge would be invisible in
+  // Simulate until one of those happened.
+  const STORAGE_KEY = "pf_simulation_scenario_v5";
   // includeAccountIds: null means "every non-excluded account" (the default,
   // old behavior); once the user picks specific accounts in the Simulate
   // view, it becomes an explicit array and narrows the headline total.
