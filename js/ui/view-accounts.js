@@ -23,6 +23,7 @@ PF.views.accounts = function (root) {
 
   function accountCard(acc) {
     const balance = PF.accounts.balance(acc.id);
+    const pendingCard = PF.accounts.pendingCardCharges(acc.id);
     const newBalanceInput = h("input", { type: "number", step: "0.01", placeholder: "יתרה בפועל" });
     const isShared = acc.type === "shared_bank";
     const transferredIn = isShared ? PF.accounts.transfersIn(acc.id) : 0;
@@ -39,6 +40,15 @@ PF.views.accounts = function (root) {
         h("span", { class: "label" }, ["יתרה נוכחית (מחושבת)"]),
         h("span", { class: "value " + (balance >= 0 ? "positive" : "negative") }, [money(balance)])
       ]),
+      // "יתרה נוכחית" above already deducted card purchases the moment
+      // they were logged (the right approach for knowing what's really free
+      // to spend — see PF.accounts.pendingCardCharges). This is the OTHER
+      // question: what your bank's own website shows today, before the
+      // card issuer actually pulls that money on its billing date.
+      pendingCard ? h("div", { class: "stat", style: "margin:0 0 10px" }, [
+        h("span", { class: "label" }, [`יתרה בבנק כרגע (לפני חיוב כרטיס של ${money(pendingCard)} שטרם נגבה)`]),
+        h("span", { class: "value" }, [money(PF.accounts.realCurrentBalance(acc.id))])
+      ]) : null,
       isShared ? h("div", { class: "row" }, [
         h("div", { class: "stat" }, [
           h("span", { class: "label" }, ["מזה, הועברתי על ידי"]),

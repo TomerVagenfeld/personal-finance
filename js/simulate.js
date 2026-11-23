@@ -17,17 +17,9 @@ PF.simulate = (function () {
     return addMonths(currentMonth(), 1);
   }
 
-  // Pure integer month arithmetic — deliberately NOT constructing a Date and
-  // reading it back via toISOString(), which converts through UTC: for day 1
-  // at local midnight in any positive-UTC-offset timezone (e.g. Israel),
-  // that silently rolls the result back a full calendar month.
-  function addMonths(month, n) {
-    const [y, m] = month.split("-").map(Number);
-    const total = (m - 1) + n;
-    const newY = y + Math.floor(total / 12);
-    const newM = ((total % 12) + 12) % 12 + 1;
-    return `${newY}-${String(newM).padStart(2, "0")}`;
-  }
+  // Shared with js/state.js (PF.addMonths) and js/accounts.js — see there for
+  // why this doesn't just round-trip through Date/toISOString().
+  const addMonths = PF.addMonths;
 
   // Whole calendar months between two "YYYY-MM" strings (b - a). Used to
   // check whether a recurring item with a limited duration is still active.

@@ -60,6 +60,28 @@ function todayStr() {
 }
 PF.todayStr = todayStr;
 
+// Pure integer month arithmetic on a "YYYY-MM" string — deliberately NOT
+// constructing a Date and reading it back via toISOString(), which converts
+// through UTC: for day 1 at local midnight in any positive-UTC-offset
+// timezone (e.g. Israel), that silently rolls the result back a full
+// calendar month. Shared by js/simulate.js and js/accounts.js.
+function addMonths(month, n) {
+  const [y, m] = month.split("-").map(Number);
+  const total = (m - 1) + n;
+  const newY = y + Math.floor(total / 12);
+  const newM = ((total % 12) + 12) % 12 + 1;
+  return `${newY}-${String(newM).padStart(2, "0")}`;
+}
+PF.addMonths = addMonths;
+
+// Every credit card in this app is assumed to bill on the 10th of the month
+// AFTER the purchase (e.g. a November charge is pulled from the bank on
+// December 10th) — the same assumption the Simulate view uses for its
+// estimated expense/loan timing. Used to tell a "real bank balance right
+// now" apart from the computed ledger balance, which deducts a card charge
+// the moment it's logged rather than when it's actually billed.
+PF.CARD_BILLING_DAY = 10;
+
 function emptyData() {
   const now = todayStr();
   const expenseCats = PF.DEFAULT_EXPENSE_CATEGORIES.map(name => ({ id: uid(), name, kind: "expense" }));

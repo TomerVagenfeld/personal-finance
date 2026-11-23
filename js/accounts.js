@@ -22,6 +22,33 @@ PF.accounts = {
     return Math.round(total * 100) / 100;
   },
 
+  // balance() deducts a card purchase the moment it's logged — the
+  // deliberate "ledger" approach real budgeting tools use, so you can't
+  // accidentally re-spend money you've already committed before the real
+  // bill clears (see PF.CARD_BILLING_DAY). But that means it DOESN'T match
+  // what your bank's own website shows today, since the card issuer hasn't
+  // actually pulled that money yet. This sums exactly the card charges still
+  // sitting in that gap — logged here, but not yet billed.
+  pendingCardCharges(accountId) {
+    const data = PF.store.data;
+    const today = PF.todayStr();
+    const total = data.transactions
+      .filter(t => t.type === "expense" && t.accountId === accountId && t.cardId)
+      .filter(t => {
+        const billingMonth = PF.addMonths(t.date.slice(0, 7), 1);
+        const billingDate = `${billingMonth}-${String(PF.CARD_BILLING_DAY).padStart(2, "0")}`;
+        return today < billingDate;
+      })
+      .reduce((sum, t) => sum + t.amount, 0);
+    return Math.round(total * 100) / 100;
+  },
+
+  // "What would my bank's own website show me right now" — balance() plus
+  // whatever card spending hasn't actually left the account yet.
+  realCurrentBalance(accountId) {
+    return Math.round((PF.accounts.balance(accountId) + PF.accounts.pendingCardCharges(accountId)) * 100) / 100;
+  },
+
   // True net worth: every tracked account, minus whatever's still owed on
   // any loan (a loan isn't an account — see PF.loans — but it's still debt).
   netWorth() {
