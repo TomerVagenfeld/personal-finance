@@ -8,7 +8,7 @@ PF.views.transactions = function (root) {
   // UI state, never written into the real data file - see PF.ui.persistentObject).
   const persisted = PF.ui.persistentObject("pf_transactions_state_v1", {
     from: "", to: "", accountId: "", categoryId: "", type: "", cardIds: [], unclassified: false, search: "",
-    sortKey: "date", sortDir: "desc"
+    suspectedDuplicate: false, sortKey: "date", sortDir: "desc"
   });
   const filters = persisted.state;
   const sort = { get key() { return filters.sortKey; }, set key(v) { filters.sortKey = v; }, get dir() { return filters.sortDir; }, set dir(v) { filters.sortDir = v; } };
@@ -36,8 +36,12 @@ PF.views.transactions = function (root) {
     h("input", { type: "checkbox", checked: filters.unclassified, onchange: e => { filters.unclassified = e.target.checked; renderTable(); } }),
     "רק לא מסווג"
   ]);
+  const suspectedDuplicateCb = h("label", { style: "display:flex; align-items:center; gap:6px; white-space:nowrap" }, [
+    h("input", { type: "checkbox", checked: filters.suspectedDuplicate, onchange: e => { filters.suspectedDuplicate = e.target.checked; renderTable(); } }),
+    "רק חשודים ככפולים"
+  ]);
 
-  toolbar.appendChild(h("div", { class: "filters" }, [fromInput, toInput, accSelect, typeSelect, catSelect, searchInput, unclassifiedCb]));
+  toolbar.appendChild(h("div", { class: "filters" }, [fromInput, toInput, accSelect, typeSelect, catSelect, searchInput, unclassifiedCb, suspectedDuplicateCb]));
 
   // Card filter: checkboxes, not a single <select> - lets you look at "all
   // cards", one specific card, or any subset of them at once. Empty selection
@@ -125,17 +129,21 @@ PF.views.transactions = function (root) {
     persisted.save(); // single choke point — every filter/sort change lands here
     const wrap = document.getElementById("txn-table-wrap");
     wrap.innerHTML = "";
-    const rows = sortRows(PF.transactions.filter(filters));
+    // Computed once per render (not per row) — scans every transaction, same
+    // cost regardless of how many rows pass the other filters.
+    const suspectIndex = PF.dedupe.suspectedDuplicateIndex();
+    let rows = sortRows(PF.transactions.filter(filters));
+    if (filters.suspectedDuplicate) rows = rows.filter(t => suspectIndex[t.id]);
     if (!rows.length) { wrap.appendChild(h("p", { class: "empty-state" }, ["אין תנועות להצגה"])); return; }
 
     const table = h("table", {}, [
       h("thead", {}, [headerRow()]),
-      h("tbody", {}, rows.map(rowEl))
+      h("tbody", {}, rows.map(t => rowEl(t, suspectIndex)))
     ]);
     wrap.appendChild(table);
   }
 
-  function rowEl(t) {
+  function rowEl(t, suspectIndex) {
     const cat = t.categoryId ? PF.categories.byId(t.categoryId) : null;
     const catCell = h("td", {});
     if (t.type === "transfer") {
@@ -160,6 +168,28 @@ PF.views.transactions = function (root) {
       } else {
         catCell.textContent = (cat ? cat.name : "התאמת יתרה") + " · " + (acc ? acc.name : "");
       }
+    }
+    const matches = suspectIndex && suspectIndex[t.id];
+    if (matches && matches.length) {
+      // Fuzzy match, not certain — e.g. the same purchase entered by hand and
+      // later imported from the real statement. Shows what it's suspected
+      // against so you can judge for yourself: delete the real duplicate (the
+      // existing "מחק" button), or mark this specific pair as NOT a duplicate
+      // so it stops being flagged.
+      const note = h("div", { style: "margin-top:4px; font-size:12px" });
+      matches.forEach(other => {
+        const dismissBtn = h("button", { class: "small" }, ["לא כפול"]);
+        dismissBtn.addEventListener("click", () => {
+          PF.dedupe.dismissPair(t.id, other.id);
+          PF.ui.toast("סומן כשתי תנועות נפרדות");
+          renderTable();
+        });
+        note.appendChild(h("div", { class: "badge", style: "background:#fdeacb; color:#8a5a1a; display:flex; align-items:center; gap:6px; width:fit-content; margin-top:2px" }, [
+          `⚠ דומה ל: ${other.payee || "-"} · ${other.date} · ${money(other.amount)}`,
+          dismissBtn
+        ]));
+      });
+      catCell.appendChild(note);
     }
     const card = t.cardId ? PF.cards.byId(t.cardId) : null;
     const typeLabel = { income: "הכנסה", expense: "הוצאה", transfer: "העברה" }[t.type];

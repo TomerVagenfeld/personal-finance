@@ -1,5 +1,16 @@
 window.PF = window.PF || {};
 
+// Cal/Isracard note text for an installment purchase looks like "תשלום 1
+// מתוך 12" (payment 1 of 12) — this pulls that out into real fields so the
+// app can reason about "how many payments are left", instead of it being
+// inert free text. Returns null for anything that doesn't match.
+const INSTALLMENT_NOTE_RE = /תשלום\s*(\d+)\s*מתוך\s*(\d+)/;
+function parseInstallment(notes) {
+  const m = INSTALLMENT_NOTE_RE.exec(notes || "");
+  if (!m) return null;
+  return { index: Number(m[1]), total: Number(m[2]) };
+}
+
 PF.transactions = {
   all() {
     return PF.store.data.transactions.slice().sort((a, b) => (a.date < b.date ? 1 : -1));
@@ -35,6 +46,8 @@ PF.transactions = {
       categoryId: null,
       ...txn
     };
+    const installment = parseInstallment(full.notes);
+    if (installment) { full.installmentIndex = installment.index; full.installmentTotal = installment.total; }
     full.importHash = full.importHash || PF.transactions.hash(full);
     PF.store.data.transactions.push(full);
     if (full.payee && full.categoryId) PF.payeeRules.learn(full.payee, full.categoryId);
@@ -58,11 +71,15 @@ PF.transactions = {
   addMany(txns) {
     for (const t of txns) {
       const full = { id: PF.uid(), source: "import", notes: "", payee: "", categoryId: null, ...t };
+      const installment = parseInstallment(full.notes);
+      if (installment) { full.installmentIndex = installment.index; full.installmentTotal = installment.total; }
       full.importHash = full.importHash || PF.transactions.hash(full);
       PF.store.data.transactions.push(full);
     }
     PF.store.touch();
   },
+
+  parseInstallment,
 
   // Hash used for duplicate detection across imports (and re-imports of the same file).
   hash(t) {

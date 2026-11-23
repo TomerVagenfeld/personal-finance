@@ -94,13 +94,21 @@ PF.mobileApp = (function () {
     const typeState = { value: "expense" };
     const incomeBtn = h("button", { class: "income" }, ["הכנסה"]);
     const expenseBtn = h("button", { class: "expense active" }, ["הוצאה"]);
+    const transferBtn = h("button", { class: "transfer" }, ["העברה"]);
     incomeBtn.addEventListener("click", () => setType("income"));
     expenseBtn.addEventListener("click", () => setType("expense"));
+    transferBtn.addEventListener("click", () => setType("transfer"));
     function setType(t) {
       typeState.value = t;
       incomeBtn.classList.toggle("active", t === "income");
       expenseBtn.classList.toggle("active", t === "expense");
-      categoryPicker.setKind(t, "");
+      transferBtn.classList.toggle("active", t === "transfer");
+      const isTransfer = t === "transfer";
+      accountWrap.style.display = isTransfer ? "none" : "";
+      categoryWrap.style.display = isTransfer ? "none" : "";
+      if (cardWrap) cardWrap.style.display = isTransfer ? "none" : "";
+      transferWrap.style.display = isTransfer ? "" : "none";
+      if (!isTransfer) categoryPicker.setKind(t, "");
     }
 
     const dateInput = h("input", { type: "date", value: PF.ui.todayStr() });
@@ -110,6 +118,16 @@ PF.mobileApp = (function () {
     const categoryPicker = PF.ui.categoryPicker("expense", null, () => {}, "ללא קטגוריה");
     const cards = PF.cards.all();
     const cardSelect = cards.length ? h("select", {}, [h("option", { value: "" }, ["ללא כרטיס"]), ...PF.ui.cardOptions()]) : null;
+    const fromSelect = h("select", {}, PF.ui.accountOptions());
+    const toSelect = h("select", {}, PF.ui.accountOptions());
+
+    const accountWrap = h("div", { class: "field" }, [h("label", {}, ["חשבון"]), accountSelect]);
+    const categoryWrap = h("div", { class: "field" }, [h("label", {}, ["קטגוריה"]), categoryPicker.el]);
+    const cardWrap = cardSelect ? h("div", { class: "field" }, [h("label", {}, ["כרטיס"]), cardSelect]) : null;
+    const transferWrap = h("div", { style: "display:none" }, [
+      h("div", { class: "field" }, [h("label", {}, ["מחשבון"]), fromSelect]),
+      h("div", { class: "field" }, [h("label", {}, ["לחשבון"]), toSelect])
+    ]);
 
     const submitBtn = h("button", { class: "primary", onclick: submit }, ["שמור"]);
     const syncBtn = h("button", { class: "ghost", onclick: () => PF.sync.run({ interactive: true }) }, ["סנכרן עכשיו", queueBadge]);
@@ -123,25 +141,39 @@ PF.mobileApp = (function () {
     async function submit() {
       const amount = Number(amountInput.value);
       if (!amount || amount <= 0) { toast("יש להזין סכום"); return; }
-      const accountId = accountSelect.value;
-      if (!accountId) { toast("אין חשבונות זמינים - יש לסנכרן קודם"); return; }
 
-      const chosenCatId = categoryPicker.getValue();
-      const chosenCat = chosenCatId ? PF.categories.byId(chosenCatId) : null;
+      let txn;
+      if (typeState.value === "transfer") {
+        const fromId = fromSelect.value;
+        const toId = toSelect.value;
+        if (!fromId || !toId) { toast("אין חשבונות זמינים - יש לסנכרן קודם"); return; }
+        if (fromId === toId) { toast("חשבון המקור והיעד חייבים להיות שונים"); return; }
+        txn = {
+          date: dateInput.value || PF.ui.todayStr(),
+          amount, type: "transfer",
+          payee: payeeInput.value.trim(),
+          fromAccountId: fromId, toAccountId: toId
+        };
+      } else {
+        const accountId = accountSelect.value;
+        if (!accountId) { toast("אין חשבונות זמינים - יש לסנכרן קודם"); return; }
+        const chosenCatId = categoryPicker.getValue();
+        const chosenCat = chosenCatId ? PF.categories.byId(chosenCatId) : null;
+        txn = {
+          date: dateInput.value || PF.ui.todayStr(),
+          amount, type: typeState.value,
+          payee: payeeInput.value.trim(),
+          accountId,
+          // Stored by name/kind (not the possibly-offline-only id) so a
+          // brand-new category typed in while offline resolves correctly
+          // once a real sync runs against the fresh data — see sync.js.
+          categoryName: chosenCat ? chosenCat.name : null,
+          categoryKind: chosenCat ? chosenCat.kind : null,
+          cardId: cardSelect ? (cardSelect.value || null) : null
+        };
+      }
 
-      await PF.pendingQueue.add({
-        date: dateInput.value || PF.ui.todayStr(),
-        amount,
-        type: typeState.value,
-        payee: payeeInput.value.trim(),
-        accountId,
-        // Stored by name/kind (not the possibly-offline-only id) so a
-        // brand-new category typed in while offline resolves correctly
-        // once a real sync runs against the fresh data — see sync.js.
-        categoryName: chosenCat ? chosenCat.name : null,
-        categoryKind: chosenCat ? chosenCat.kind : null,
-        cardId: cardSelect ? (cardSelect.value || null) : null
-      });
+      await PF.pendingQueue.add(txn);
 
       toast("נשמר - ימתין לסנכרון");
       amountInput.value = "";
@@ -172,13 +204,11 @@ PF.mobileApp = (function () {
     container.appendChild(h("h1", {}, ["הוספת תנועה מהירה"]));
     container.appendChild(statusEl);
     container.appendChild(h("div", { class: "card" }, [
-      h("div", { class: "type-toggle" }, [expenseBtn, incomeBtn]),
+      h("div", { class: "type-toggle" }, [expenseBtn, incomeBtn, transferBtn]),
       h("div", { class: "field" }, [h("label", {}, ["תאריך"]), dateInput]),
       h("div", { class: "field" }, [h("label", {}, ["סכום"]), amountInput]),
       h("div", { class: "field" }, [h("label", {}, ["תיאור"]), payeeInput]),
-      h("div", { class: "field" }, [h("label", {}, ["חשבון"]), accountSelect]),
-      h("div", { class: "field" }, [h("label", {}, ["קטגוריה"]), categoryPicker.el]),
-      cardSelect ? h("div", { class: "field" }, [h("label", {}, ["כרטיס"]), cardSelect]) : null,
+      accountWrap, categoryWrap, cardWrap, transferWrap,
       submitBtn
     ]));
     container.appendChild(h("div", { class: "card" }, [

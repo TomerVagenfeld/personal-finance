@@ -144,11 +144,17 @@ PF.views.import = function (root) {
     ]);
 
     const dupCount = batch.rows.filter(r => r.isDuplicate).length;
+    const suspectedCount = batch.rows.filter(r => r.isSuspectedDuplicate).length;
     const commitBtn = h("button", { class: "primary", onclick: () => commitBatch(batch, idx) }, [`ייבא ${batch.rows.filter(r => r.include).length} תנועות`]);
 
     return h("div", { class: "card" }, [
       header,
       dupCount ? h("p", {}, [h("span", { class: "badge" }, [`${dupCount} שורות זוהו כבר קיימות בנתונים ולא מסומנות`])]) : null,
+      // Fuzzy match, not exact — e.g. the same purchase entered by hand
+      // earlier with a slightly different description. Left INCLUDED by
+      // default (unlike confirmed duplicates) since it's only a guess -
+      // review the badge on each row and uncheck if it really is the same one.
+      suspectedCount ? h("p", {}, [h("span", { class: "badge", style: "background:#fdeacb; color:#8a5a1a" }, [`${suspectedCount} שורות דומות לתנועות קיימות - בדקו לפני ייבוא`])]) : null,
       table,
       h("div", { style: "margin-top:10px" }, [commitBtn])
     ]);
@@ -208,7 +214,11 @@ PF.views.import = function (root) {
       h("td", {}, [{ income: "הכנסה", expense: "הוצאה" }[r.type]]),
       h("td", {}, [categoryCell]),
       cardCell,
-      h("td", {}, [r.isDuplicate ? h("span", { class: "badge" }, ["כפילות"]) : null])
+      h("td", {}, [
+        r.isDuplicate ? h("span", { class: "badge" }, ["כפילות"])
+          : r.isSuspectedDuplicate ? h("span", { class: "badge", style: "background:#fdeacb; color:#8a5a1a" }, ["דומה לקיימת?"])
+          : null
+      ])
     ]);
 
     renderCat();

@@ -79,6 +79,7 @@ PF.views.simulate = function (root) {
 
   root.appendChild(section("הכנסות צפויות (קבוע מדי חודש)", items.filter(i => i.kind === "income"), "income"));
   root.appendChild(section("הוצאות צפויות (ממוצע 3 חודשים, קבוע מדי חודש)", items.filter(i => i.kind === "expense"), "expense"));
+  if (items.some(i => i.kind === "installment")) root.appendChild(section("תשלומים פעילים (מסתיימים לבד כשנגמרים)", items.filter(i => i.kind === "installment"), "expense"));
   if (items.some(i => i.kind === "loan")) root.appendChild(section("תשלומי הלוואה צפויים (ממוצע 3 חודשים, קבוע מדי חודש)", items.filter(i => i.kind === "loan"), "expense"));
 
   renderResults();
@@ -105,10 +106,20 @@ PF.views.simulate = function (root) {
       if (it.accountId !== undefined) it.accountId = accSelect.value; else it.toAccountId = accSelect.value;
       renderResults();
     });
+    // Only an installment plan has a real end date to adjust — e.g. you know
+    // the actual next billing month pushed the finish out further than the
+    // simulation's safe "starting now" guess. Edits here stick across
+    // reseeds as long as no new payment for this same plan gets imported —
+    // see the installment block in simulate.js.
+    const durationInput = it.kind === "installment"
+      ? h("input", { type: "number", min: "1", value: it.durationMonths || 1, style: "width:60px", title: "חודשים שנותרו" })
+      : null;
+    if (durationInput) durationInput.addEventListener("input", () => { it.durationMonths = Math.max(1, Number(durationInput.value) || 1); renderResults(); });
     return h("div", { class: "scenario-row" }, [
       h("label", { class: "grow", style: "display:flex; align-items:center; gap:8px" }, [cb, it.label]),
       amountInput,
       h("span", { style: "display:flex; align-items:center; gap:4px" }, [h("span", {}, ["יום"]), dayInput]),
+      durationInput ? h("span", { style: "display:flex; align-items:center; gap:4px" }, [h("span", {}, ["חודשים שנותרו"]), durationInput]) : null,
       accSelect
     ]);
   }

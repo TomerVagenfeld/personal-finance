@@ -1,7 +1,7 @@
 // Bump this on every deploy of mobile/js/* or the shared js/* files it
 // loads — there's no build step to hash filenames automatically, so this is
 // the one manual step that busts the cache.
-const SHELL_CACHE = "pf-mobile-shell-v6";
+const SHELL_CACHE = "pf-mobile-shell-v7";
 
 const PRECACHE_URLS = [
   "./index.html",

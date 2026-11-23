@@ -81,7 +81,8 @@ function emptyData() {
     transactions: [],
     importProfiles: [],
     payeeRules: {}, // payee text (normalized) -> categoryId, learned from manual categorization & import review
-    loans: [] // { id, name, openingBalance (negative = still owed), openingDate } — see js/loans.js
+    loans: [], // { id, name, openingBalance (negative = still owed), openingDate } — see js/loans.js
+    dismissedDuplicatePairs: [] // [[idA, idB], ...] — pairs the user confirmed are NOT duplicates, see js/import/dedupe.js
   };
 }
 PF.emptyData = emptyData;
@@ -114,6 +115,18 @@ function migrate(data) {
   data.importProfiles = data.importProfiles || [];
   data.payeeRules = data.payeeRules || {};
   data.loans = data.loans || [];
+  data.dismissedDuplicatePairs = data.dismissedDuplicatePairs || [];
+
+  // Backfill installment info (installmentIndex/installmentTotal) onto any
+  // already-imported transaction whose notes contain "תשלום X מתוך Y" but
+  // predates this feature — PF.transactions.add()/addMany() already do this
+  // for anything imported from now on, so this only ever touches old rows;
+  // once backfilled, there's nothing left to do on later loads.
+  data.transactions.forEach(t => {
+    if (t.installmentTotal) return;
+    const installment = PF.transactions.parseInstallment(t.notes);
+    if (installment) { t.installmentIndex = installment.index; t.installmentTotal = installment.total; }
+  });
 
   // One-time conversion: a loan used to be a special "loan"-type account
   // (negative balance = debt), with payments stored as transfers into it so

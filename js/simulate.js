@@ -77,14 +77,19 @@ PF.simulate = (function () {
 
   // Average monthly spend per expense category over the `count` full months
   // right before `beforeMonth` — excluding balance adjustments. A sensible
-  // starting estimate for "what will I likely spend".
-  function averageExpenseByCategory(beforeMonth, count) {
+  // starting estimate for "what will I likely spend". `excludeFn`, when
+  // given, skips transactions that are already modeled some other way (e.g.
+  // an active installment plan, seeded as its own item with a real end date
+  // — see activeInstallmentPlans() — so it isn't blended into this average
+  // AND counted again as a separate line).
+  function averageExpenseByCategory(beforeMonth, count, excludeFn) {
     count = count || 3;
     const months = monthsBefore(beforeMonth, count);
     const totals = {}; // categoryId|null -> total
     for (const t of PF.store.data.transactions) {
       if (t.type !== "expense" || t.isAdjustment) continue;
       if (!months.includes(t.date.slice(0, 7))) continue;
+      if (excludeFn && excludeFn(t)) continue;
       const key = t.categoryId || "__uncategorized__";
       totals[key] = (totals[key] || 0) + t.amount;
     }
@@ -93,6 +98,27 @@ PF.simulate = (function () {
       name: key === "__uncategorized__" ? "לא מסווג" : (PF.categories.byId(key) || {}).name || "?",
       avgAmount: Math.round((sum / count) * 100) / 100
     })).filter(r => r.avgAmount > 0).sort((a, b) => b.avgAmount - a.avgAmount);
+  }
+
+  // An installment purchase (תשלום X מתוך Y) bills the same amount every
+  // month until it's done — not indefinitely, like a normal category
+  // average assumes. "Same plan" is identified by payee+amount+total (an
+  // equal-installment plan never changes any of those between payments).
+  // Only plans with payments still remaining (latest known index < total)
+  // are "active" - a finished plan has nothing left to project.
+  function activeInstallmentPlans() {
+    const latestByPlan = {};
+    for (const t of PF.store.data.transactions) {
+      if (t.type !== "expense" || !t.installmentTotal) continue;
+      const key = [t.payee, t.amount, t.installmentTotal].join("|");
+      const current = latestByPlan[key];
+      if (!current || t.date > current.date || (t.date === current.date && t.installmentIndex > current.installmentIndex)) {
+        latestByPlan[key] = t;
+      }
+    }
+    return Object.values(latestByPlan)
+      .map(t => ({ latest: t, remaining: t.installmentTotal - t.installmentIndex }))
+      .filter(p => p.remaining > 0);
   }
 
   // Toll-road payments (Highway 6 / כביש חוצה ישראל, billed via "דרך ארץ")
@@ -240,7 +266,17 @@ PF.simulate = (function () {
   // fields, which would silently default every item to day 1 and hide the
   // whole point of simulating mid-month timing. Bumping the key makes any
   // old persisted scenario get ignored and reseeded fresh instead.
-  const STORAGE_KEY = "pf_simulation_scenario_v2";
+  // Bumped again to v3 when installment-plan detection was added — a v2
+  // scenario's category-average estimates still blend in installment
+  // payments that have actually finished, so it needs a fresh reseed to
+  // pick up the new per-plan items (with their real end dates) and the
+  // now-smaller category averages (installment amounts are excluded there).
+  // Bumped again to v4 when installment items got their own `kind`
+  // ("installment" instead of "expense") plus planKey/knownIndex, so edits
+  // to them survive a reseed — a v3 scenario's installment items lack those
+  // fields and would otherwise end up duplicated (old kind:"expense" copy
+  // alongside a fresh kind:"installment" one for the same plan).
+  const STORAGE_KEY = "pf_simulation_scenario_v4";
   // includeAccountIds: null means "every non-excluded account" (the default,
   // old behavior); once the user picks specific accounts in the Simulate
   // view, it becomes an explicit array and narrows the headline total.
@@ -267,7 +303,8 @@ PF.simulate = (function () {
   // average loan payment) for whatever month is currently selected. They're
   // all `recurring: true` starting at targetMonth — i.e. assumed to repeat
   // every month of the simulated horizon, same as real life.
-  function seedEstimates(bankAcc) {
+  function seedEstimates(bankAcc, previousInstallments) {
+    previousInstallments = previousInstallments || [];
     PF.INCOME_TEMPLATES.forEach(tpl => {
       const cat = PF.categories.findByName(tpl.category, "income");
       // מלגה arrives in two real, separately-dated installments, not one
@@ -307,6 +344,47 @@ PF.simulate = (function () {
         included: tpl.amount != null || isTutoring, recurring: true, month: scenario.targetMonth, day
       });
     });
+    // An active installment plan (תשלום X מתוך Y) gets its own line with a
+    // real end date, pulled OUT of the category average below — otherwise
+    // it'd be blended into "what I usually spend" forever, even after it's
+    // actually done (exactly the "חשבונות סטודנטים" case: 6 of 6 means
+    // nothing more to pay, 4 of 10 means 6 months left, not indefinite).
+    const installmentPlans = activeInstallmentPlans();
+    const installmentKeys = new Set(installmentPlans.map(p => [p.latest.payee, p.latest.amount, p.latest.installmentTotal].join("|")));
+    function isActiveInstallmentTxn(t) {
+      return t.installmentTotal && installmentKeys.has([t.payee, t.amount, t.installmentTotal].join("|"));
+    }
+    installmentPlans.forEach(({ latest, remaining }) => {
+      const planKey = [latest.payee, latest.amount, latest.installmentTotal].join("|");
+      const prev = previousInstallments.find(it => it.planKey === planKey);
+      // Keep whatever you last set (amount/month/day/duration/included) as
+      // long as the real data hasn't moved — only a NEWLY detected payment
+      // for this same plan (knownIndex no longer matches the latest
+      // imported row) resets it back to a fresh default. That's "the real
+      // transactions keep editing it" without a reseed (e.g. just switching
+      // the target month) silently discarding a correction you made.
+      if (prev && prev.knownIndex === latest.installmentIndex) {
+        scenario.items.push(prev);
+        return;
+      }
+      // Anchored to scenario.targetMonth (same "starting now" baseline every
+      // other estimate uses) rather than "the month after the latest known
+      // payment" — if you haven't imported every single month's statement,
+      // the latest known row can be many months stale, and extrapolating
+      // forward from ITS date would land the remaining payments on
+      // completely the wrong months. "N payments left, starting next
+      // month" is the safer assumption when the true next billing date
+      // isn't actually known.
+      scenario.items.push({
+        id: scenario.nextId++, kind: "installment", type: "expense",
+        planKey, knownIndex: latest.installmentIndex,
+        label: `${latest.payee} (תשלום ${latest.installmentIndex + 1} מתוך ${latest.installmentTotal})`,
+        amount: latest.amount,
+        accountId: latest.accountId, categoryId: latest.categoryId,
+        included: true, recurring: true, month: scenario.targetMonth, durationMonths: remaining, day: 10
+      });
+    });
+
     // Everyday spending mostly runs through the credit cards, which bill as
     // one lump sum on the 10th — not spread evenly through the month — so
     // that's the day the money actually leaves the bank for this estimate.
@@ -314,7 +392,7 @@ PF.simulate = (function () {
     // user's own mental model) vs. the rest of that category (public
     // transit, taxis, parking, car service), instead of one blended average.
     const transportCat = PF.categories.findByName("תחבורה", "expense");
-    averageExpenseByCategory(scenario.targetMonth, 3).forEach(c => {
+    averageExpenseByCategory(scenario.targetMonth, 3, isActiveInstallmentTxn).forEach(c => {
       if (transportCat && c.categoryId === transportCat.id) return;
       scenario.items.push({
         id: scenario.nextId++, kind: "expense", type: "expense",
@@ -325,9 +403,9 @@ PF.simulate = (function () {
     });
     if (transportCat) {
       const highway6Avg = averageAmountFor(scenario.targetMonth, 3,
-        t => t.categoryId === transportCat.id && isHighway6Payment(t));
+        t => t.categoryId === transportCat.id && isHighway6Payment(t) && !isActiveInstallmentTxn(t));
       const restAvg = averageAmountFor(scenario.targetMonth, 3,
-        t => t.categoryId === transportCat.id && !isHighway6Payment(t));
+        t => t.categoryId === transportCat.id && !isHighway6Payment(t) && !isActiveInstallmentTxn(t));
       if (highway6Avg > 0) {
         scenario.items.push({
           id: scenario.nextId++, kind: "expense", type: "expense",
@@ -371,10 +449,14 @@ PF.simulate = (function () {
 
   // Re-generates ONLY the auto-estimated items (income/expense/loan) for the
   // currently selected target month — e.g. after the user changes the month.
-  // Custom one-off items the user typed in are left untouched.
+  // Custom one-off items the user typed in are left untouched. Installment
+  // items are a special case, carried over (not wiped) so seedEstimates can
+  // decide per-plan whether to keep the user's own edits or refresh them —
+  // see the installment block in seedEstimates() for why.
   function reseedEstimates(bankAcc) {
+    const previousInstallments = scenario.items.filter(it => it.kind === "installment");
     scenario.items = scenario.items.filter(it => it.kind === "custom");
-    seedEstimates(bankAcc);
+    seedEstimates(bankAcc, previousInstallments);
   }
 
   function setTargetMonth(bankAcc, month) {
@@ -409,7 +491,7 @@ PF.simulate = (function () {
 
   return {
     currentMonth, nextMonth, addMonths, monthLabel, horizonMonths, monthDiff, itemAppliesInMonth, itemDay,
-    averageExpenseByCategory, averageLoanPayment,
+    averageExpenseByCategory, averageLoanPayment, activeInstallmentPlans,
     currentBalances, projectTimeline, scenario, ensureInitialized, reseedEstimates,
     setTargetMonth, resetScenario, addCustomItem, removeItem, persist
   };

@@ -73,6 +73,7 @@ input:focus, select:focus { outline: none; border-color: var(--c-rose); }
 }
 .type-toggle button.active.income { background: var(--income); color: white; border-color: var(--income); }
 .type-toggle button.active.expense { background: var(--expense); color: white; border-color: var(--expense); }
+.type-toggle button.active.transfer { background: #64748b; color: white; border-color: #64748b; }
 
 button.primary {
   width: 100%;
