@@ -24,10 +24,13 @@ PF.views.accounts = function (root) {
   function accountCard(acc) {
     const balance = PF.accounts.balance(acc.id);
     const pendingCard = PF.accounts.pendingCardCharges(acc.id);
+    const pendingAsOf = acc.pendingCardChargesAsOf;
     const newBalanceInput = h("input", { type: "number", step: "0.01", placeholder: "יתרה בפועל" });
     const isShared = acc.type === "shared_bank";
+    const canHaveCards = acc.type === "bank" || acc.type === "shared_bank";
     const transferredIn = isShared ? PF.accounts.transfersIn(acc.id) : 0;
     const otherGap = isShared ? Math.round((balance - transferredIn) * 100) / 100 : 0;
+    const pendingCardInput = canHaveCards ? h("input", { type: "number", step: "0.01", placeholder: "סכום חיובי כרטיס פתוחים", value: pendingCard || "" }) : null;
     return h("div", { class: "card" }, [
       h("div", { class: "row", style: "justify-content:space-between" }, [
         h("div", {}, [
@@ -42,11 +45,19 @@ PF.views.accounts = function (root) {
       ]),
       // "יתרה נוכחית" above already deducted card purchases the moment
       // they were logged (the right approach for knowing what's really free
-      // to spend — see PF.accounts.pendingCardCharges). This is the OTHER
-      // question: what your bank's own website shows today, before the
-      // card issuer actually pulls that money on its billing date.
-      pendingCard ? h("div", { class: "stat", style: "margin:0 0 10px" }, [
-        h("span", { class: "label" }, [`יתרה בבנק כרגע (לפני חיוב כרטיס של ${money(pendingCard)} שטרם נגבה)`]),
+      // to spend). This is the OTHER question: what your bank's own website
+      // shows today, before the card issuer actually pulls that money. No
+      // reliable way to infer the pending amount from the transaction data
+      // itself (tried two different heuristics, both wrong against real
+      // data) — so it's a plain manual reconciliation, same as the balance
+      // update below: read the open-charges total off the card company's
+      // site and enter it here.
+      canHaveCards ? h("div", { class: "stat", style: "margin:0 0 10px" }, [
+        h("span", { class: "label" }, [
+          pendingCard
+            ? `יתרה בבנק כרגע (לפי חיובי כרטיס פתוחים של ${money(pendingCard)}${pendingAsOf ? `, עודכן ב-${pendingAsOf}` : ""})`
+            : "יתרה בבנק כרגע (טרם הוזנו חיובי כרטיס פתוחים)"
+        ]),
         h("span", { class: "value" }, [money(PF.accounts.realCurrentBalance(acc.id))])
       ]) : null,
       isShared ? h("div", { class: "row" }, [
@@ -60,6 +71,10 @@ PF.views.accounts = function (root) {
         ])
       ]) : null,
       isShared ? h("p", { class: "empty-state" }, ["עדכון יתרה כאן לא אומר \"מזומן ששכחתי\" כמו בחשבונות שלכם - כל מה שהעברתם לכאן כבר נרשם כהעברה, אז כל פער הוא כנראה כסף מבן/בת הזוג או הוצאה משותפת שעוד לא נרשמה."]) : null,
+      canHaveCards ? h("div", { class: "row" }, [
+        pendingCardInput,
+        h("button", { class: "small", onclick: () => updatePendingCard(acc.id, pendingCardInput) }, ["עדכן חיובים פתוחים"])
+      ]) : null,
       h("div", { class: "row" }, [
         newBalanceInput,
         h("button", { class: "small primary", onclick: () => reconcile(acc.id, newBalanceInput) }, ["עדכן יתרה"])
@@ -72,6 +87,13 @@ PF.views.accounts = function (root) {
     if (isNaN(val) || input.value === "") { PF.ui.toast("יש להזין יתרה"); return; }
     const txn = PF.accounts.adjustBalanceTo(accountId, val);
     PF.ui.toast(txn ? "היתרה עודכנה" : "היתרה כבר מדויקת");
+    PF.app.render();
+  }
+
+  function updatePendingCard(accountId, input) {
+    if (input.value === "") { PF.ui.toast("יש להזין סכום"); return; }
+    PF.accounts.setPendingCardCharges(accountId, input.value);
+    PF.ui.toast("חיובים פתוחים עודכנו");
     PF.app.render();
   }
 

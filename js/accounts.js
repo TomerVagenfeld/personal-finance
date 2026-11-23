@@ -29,28 +29,31 @@ PF.accounts = {
   // website shows today, since the card issuer hasn't actually pulled that
   // money yet.
   //
-  // Figuring out WHICH card charges have actually cleared turned out not to
-  // be a fixed "bills N days later" rule (verified against real data — a
-  // generic cutoff was off by over ₪1,700). The real signal is simpler and
-  // self-correcting: a bank-statement import's rows have no `cardId` (the
-  // bank doesn't know which physical card you used) and represent money
-  // that's definitely already moved; a card-statement import's rows DO have
-  // a `cardId` and may be ahead of what's been bank-confirmed yet. So
-  // anything card-tagged dated AFTER the most recent bank-confirmed
-  // transaction on this account is still pending — it only clears once a
-  // later bank import (or manual entry) moves that cutoff forward.
+  // Figuring out WHICH logged charges have actually cleared turned out to
+  // have no reliable automatic signal — neither a fixed "bills N days
+  // later" rule nor a cardId-based heuristic survived checking against real
+  // data (both were off by thousands of shekels, because historical imports
+  // tagged `cardId` inconsistently and there's no single "paid the card
+  // company" transaction to anchor on). So this is a plain manual
+  // reconciliation instead — same pattern as adjustBalanceTo() — you read
+  // the real pending total off the card company's own site and tell the app,
+  // same as updating any other balance.
   pendingCardCharges(accountId) {
-    const data = PF.store.data;
-    const expenses = data.transactions.filter(t => t.type === "expense" && t.accountId === accountId);
-    const lastConfirmedDate = expenses.filter(t => !t.cardId).reduce((max, t) => (t.date > max ? t.date : max), "0000-00-00");
-    const total = expenses
-      .filter(t => t.cardId && t.date > lastConfirmedDate)
-      .reduce((sum, t) => sum + t.amount, 0);
-    return Math.round(total * 100) / 100;
+    const acc = PF.store.data.accounts.find(a => a.id === accountId);
+    return (acc && acc.pendingCardCharges) || 0;
+  },
+
+  setPendingCardCharges(accountId, amount) {
+    const acc = PF.store.data.accounts.find(a => a.id === accountId);
+    if (!acc) return;
+    acc.pendingCardCharges = Math.round((Number(amount) || 0) * 100) / 100;
+    acc.pendingCardChargesAsOf = PF.todayStr();
+    PF.store.touch();
   },
 
   // "What would my bank's own website show me right now" — balance() plus
-  // whatever card spending hasn't actually left the account yet.
+  // whatever card spending hasn't actually left the account yet (per the
+  // manually reconciled figure).
   realCurrentBalance(accountId) {
     return Math.round((PF.accounts.balance(accountId) + PF.accounts.pendingCardCharges(accountId)) * 100) / 100;
   },
