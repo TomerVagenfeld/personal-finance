@@ -113,32 +113,6 @@ PF.simulate = (function () {
       .filter(p => p.remaining > 0);
   }
 
-  // Toll-road payments (Highway 6 / כביש חוצה ישראל, billed via "דרך ארץ")
-  // get split out of the general תחבורה average — grouped with fuel as one
-  // "driving cost" bucket in the user's own mental model — from the rest of
-  // that category (public transit, taxis, parking, car service).
-  const HIGHWAY6_RE = /כביש.{0,4}6|חוצה ישראל|דרך ארץ/;
-  function isHighway6Payment(t) {
-    return HIGHWAY6_RE.test(t.payee || "");
-  }
-
-  // Average monthly amount for expenses matching `predicate`, over the
-  // `count` full months right before `beforeMonth` — same window/exclusions
-  // as averageExpenseByCategory, but filtered at the transaction level
-  // instead of grouped by category, so a single category can be split into
-  // more than one simulation line.
-  function averageAmountFor(beforeMonth, count, predicate) {
-    count = count || 3;
-    const months = monthsBefore(beforeMonth, count);
-    let sum = 0;
-    for (const t of PF.store.data.transactions) {
-      if (t.type !== "expense" || t.isAdjustment) continue;
-      if (!months.includes(t.date.slice(0, 7))) continue;
-      if (!predicate(t)) continue;
-      sum += t.amount;
-    }
-    return Math.round((sum / count) * 100) / 100;
-  }
 
   // Average payment actually made toward a loan (expenses tagged with its
   // loanId) over the `count` full months right before `beforeMonth`. Falls
@@ -411,12 +385,11 @@ PF.simulate = (function () {
     // Everyday spending mostly runs through the credit cards, which bill as
     // one lump sum on the 10th — not spread evenly through the month — so
     // that's the day the money actually leaves the bank for this estimate.
-    // תחבורה is split into "כביש 6" (grouped with fuel as driving cost in the
-    // user's own mental model) vs. the rest of that category (public
-    // transit, taxis, parking, car service), instead of one blended average.
-    const transportCat = PF.categories.findByName("תחבורה", "expense");
+    // (Transport and energy used to be split further here — Highway 6 broken
+    // out from the rest of תחבורה — but that's gone now that both categories
+    // are merged into one in the real data, so one blended average is already
+    // the right answer.)
     averageExpenseByCategory(scenario.targetMonth, 3, isActiveInstallmentTxn).forEach(c => {
-      if (transportCat && c.categoryId === transportCat.id) return;
       scenario.items.push({
         id: scenario.nextId++, kind: "expense", type: "expense",
         label: c.name, amount: c.avgAmount,
@@ -424,28 +397,6 @@ PF.simulate = (function () {
         included: true, recurring: true, month: scenario.targetMonth, day: PF.CARD_BILLING_DAY
       });
     });
-    if (transportCat) {
-      const highway6Avg = averageAmountFor(scenario.targetMonth, 3,
-        t => t.categoryId === transportCat.id && isHighway6Payment(t) && !isActiveInstallmentTxn(t));
-      const restAvg = averageAmountFor(scenario.targetMonth, 3,
-        t => t.categoryId === transportCat.id && !isHighway6Payment(t) && !isActiveInstallmentTxn(t));
-      if (highway6Avg > 0) {
-        scenario.items.push({
-          id: scenario.nextId++, kind: "expense", type: "expense",
-          label: "כביש 6 / חוצה ישראל", amount: highway6Avg,
-          accountId: bankAcc.id, categoryId: transportCat.id,
-          included: true, recurring: true, month: scenario.targetMonth, day: PF.CARD_BILLING_DAY
-        });
-      }
-      if (restAvg > 0) {
-        scenario.items.push({
-          id: scenario.nextId++, kind: "expense", type: "expense",
-          label: "תחבורה - שאר (תח\"צ, מוניות, חניה, טיפולים)", amount: restAvg,
-          accountId: bankAcc.id, categoryId: transportCat.id,
-          included: true, recurring: true, month: scenario.targetMonth, day: PF.CARD_BILLING_DAY
-        });
-      }
-    }
     // A loan payment is a real expense (not a transfer to an account — a
     // loan isn't one, see PF.loans), so it's simulated the same way: money
     // leaves the bank, tagged with the loan category + which loan it's for.

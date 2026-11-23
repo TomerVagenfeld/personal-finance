@@ -35,6 +35,25 @@ PF.categories = {
 
   findByName(name, kind) {
     return PF.store.data.categories.find(c => c.name === name && (!kind || c.kind === kind)) || null;
+  },
+
+  // Folds `mergeId` into `keepId`: every transaction and learned payee rule
+  // pointing at `mergeId` is repointed to `keepId`, then `mergeId` is
+  // deleted. Optionally renames the surviving category (e.g. to a combined
+  // name covering both). Unlike remove(), this is safe to call on a category
+  // that's actually in use — that's the whole point.
+  merge(keepId, mergeId, newName) {
+    if (keepId === mergeId) return;
+    const data = PF.store.data;
+    const keep = PF.categories.byId(keepId);
+    const merged = PF.categories.byId(mergeId);
+    if (!keep || !merged) return;
+    if (keep.kind !== merged.kind) throw new Error("לא ניתן למזג קטגוריות הכנסה והוצאה יחד");
+    data.transactions.forEach(t => { if (t.categoryId === mergeId) t.categoryId = keepId; });
+    Object.keys(data.payeeRules).forEach(key => { if (data.payeeRules[key] === mergeId) data.payeeRules[key] = keepId; });
+    if (newName) keep.name = newName;
+    data.categories = data.categories.filter(c => c.id !== mergeId);
+    PF.store.touch();
   }
 };
 
