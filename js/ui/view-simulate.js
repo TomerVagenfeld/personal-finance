@@ -101,6 +101,21 @@ PF.views.simulate = function (root) {
     amountInput.addEventListener("input", () => { it.amount = Number(amountInput.value) || 0; renderResults(); });
     const dayInput = h("input", { type: "number", min: "1", max: "31", value: it.day || 1, style: "width:60px", title: "יום בחודש" });
     dayInput.addEventListener("input", () => { it.day = Math.min(31, Math.max(1, Number(dayInput.value) || 1)); renderResults(); });
+    const dayWrap = h("span", { style: "display:flex; align-items:center; gap:4px" + (it.occurrencesPerMonth > 1 ? "; display:none" : "") }, [h("span", {}, ["יום"]), dayInput]);
+    // Only for income — splits one monthly estimate (tutoring, say) into that
+    // many equal smaller payments spread through the month instead of one
+    // lump sum on a single day, see PF.simulate.spreadDays(). Mostly matters
+    // when the item's account (below) is Bit/Cash rather than the bank —
+    // those balances are small enough that a realistic gradual rise instead
+    // of one artificial jump actually changes what the chart shows.
+    const occurrencesInput = it.kind === "income"
+      ? h("input", { type: "number", min: "1", max: "30", value: it.occurrencesPerMonth || 1, style: "width:55px", title: "לפצל לכמה תשלומים שווים לאורך החודש" })
+      : null;
+    if (occurrencesInput) occurrencesInput.addEventListener("input", () => {
+      it.occurrencesPerMonth = Math.min(30, Math.max(1, Number(occurrencesInput.value) || 1));
+      dayWrap.style.display = it.occurrencesPerMonth > 1 ? "none" : "flex";
+      renderResults();
+    });
     const accSelect = h("select", { style: "max-width:260px" }, PF.ui.accountOptions(it.accountId || it.toAccountId));
     accSelect.addEventListener("change", () => {
       if (it.accountId !== undefined) it.accountId = accSelect.value; else it.toAccountId = accSelect.value;
@@ -118,7 +133,8 @@ PF.views.simulate = function (root) {
     return h("div", { class: "scenario-row" }, [
       h("label", { class: "grow", style: "display:flex; align-items:center; gap:8px" }, [cb, it.label]),
       amountInput,
-      h("span", { style: "display:flex; align-items:center; gap:4px" }, [h("span", {}, ["יום"]), dayInput]),
+      dayWrap,
+      occurrencesInput ? h("span", { style: "display:flex; align-items:center; gap:4px" }, [h("span", {}, ["תשלומים בחודש"]), occurrencesInput]) : null,
       durationInput ? h("span", { style: "display:flex; align-items:center; gap:4px" }, [h("span", {}, ["חודשים שנותרו"]), durationInput]) : null,
       accSelect
     ]);

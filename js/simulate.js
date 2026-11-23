@@ -174,13 +174,26 @@ PF.simulate = (function () {
     return it.day || 1;
   }
 
-  function applyItem(balances, it) {
-    if (it.type === "income") balances[it.accountId] = (balances[it.accountId] || 0) + it.amount;
-    else if (it.type === "expense") balances[it.accountId] = (balances[it.accountId] || 0) - it.amount;
+  function applyItem(balances, it, amount) {
+    if (amount == null) amount = it.amount;
+    if (it.type === "income") balances[it.accountId] = (balances[it.accountId] || 0) + amount;
+    else if (it.type === "expense") balances[it.accountId] = (balances[it.accountId] || 0) - amount;
     else if (it.type === "transfer") {
-      balances[it.fromAccountId] = (balances[it.fromAccountId] || 0) - it.amount;
-      balances[it.toAccountId] = (balances[it.toAccountId] || 0) + it.amount;
+      balances[it.fromAccountId] = (balances[it.fromAccountId] || 0) - amount;
+      balances[it.toAccountId] = (balances[it.toAccountId] || 0) + amount;
     }
+  }
+
+  // `count` evenly-spaced days within a month (1-28, so it's always valid
+  // regardless of the month's real length) — e.g. count=4 -> [4, 11, 18, 25].
+  // Used for an income that actually trickles in through the month (tutoring
+  // lessons) rather than landing in one lump sum, so an account that's
+  // mostly fed by it (cash/Bit) shows a realistic gradual rise instead of one
+  // artificial jump.
+  function spreadDays(count) {
+    const days = [];
+    for (let i = 0; i < count; i++) days.push(Math.max(1, Math.round((i + 1) * 28 / (count + 1))));
+    return days;
   }
 
   // Items: [{ type, amount, accountId|fromAccountId/toAccountId, included,
@@ -224,21 +237,29 @@ PF.simulate = (function () {
       if (negAcc) firstProblem = { month: m, day, account: negAcc, balance: Math.round((balances[negAcc.id] || 0) * 100) / 100 };
     };
     for (const m of months) {
-      const monthItems = items
+      const monthItems = [];
+      items
         .filter(it => it.included && it.amount && itemAppliesInMonth(it, m))
-        .map(it => ({ it, day: itemDay(it) }))
-        .sort((a, b) => a.day - b.day);
+        .forEach(it => {
+          const n = it.occurrencesPerMonth > 1 ? it.occurrencesPerMonth : 1;
+          if (n === 1) { monthItems.push({ it, day: itemDay(it), amount: it.amount }); return; }
+          // Split into N equal smaller payments spread across the month
+          // instead of one lump sum — see spreadDays().
+          const perPayment = Math.round((it.amount / n) * 100) / 100;
+          spreadDays(n).forEach(day => monthItems.push({ it, day, amount: perPayment }));
+        });
+      monthItems.sort((a, b) => a.day - b.day);
       let minLiquid = { value: liquidNow(), day: 0 }; // carried-in balance counts too
       checkNegative(m, 0);
-      for (const { it, day } of monthItems) {
-        applyItem(balances, it);
+      for (const { it, day, amount } of monthItems) {
+        applyItem(balances, it, amount);
         const liquidVal = liquidNow();
         if (liquidVal < minLiquid.value) minLiquid = { value: liquidVal, day };
         checkNegative(m, day);
         // label/type/amount travel with each point so the chart's tooltip can
         // say WHAT happened that day (income landing, a card-billing-day
         // expense leaving...), not just show the resulting balance number.
-        dailyTrace.push({ date: dateForDay(m, day), value: liquidVal, label: it.label, type: it.type, amount: it.amount });
+        dailyTrace.push({ date: dateForDay(m, day), value: liquidVal, label: it.label, type: it.type, amount });
       }
       for (const id in balances) balances[id] = Math.round(balances[id] * 100) / 100;
       timeline.push({ month: m, balances: { ...balances } });
@@ -332,11 +353,18 @@ PF.simulate = (function () {
       // ₪1,000 is just a starting placeholder; edit the amount per-row like
       // any other estimate.
       const amount = tpl.amount != null ? tpl.amount : (isTutoring ? 1000 : 0);
+      // Lessons actually happen a few times a week, paid in cash/Bit as they
+      // go — not as one lump sum on a single day. Spread into several smaller
+      // payments through the month (see spreadDays()) so an account mostly
+      // fed by it (switch "חשבון" below to Bit/Cash) shows a realistic
+      // gradual rise instead of one artificial jump on day 20. Editable in
+      // the Simulate view like everything else here (see "תשלומים בחודש").
       scenario.items.push({
         id: scenario.nextId++, kind: "income", type: "income",
         label: tpl.category, amount,
         accountId: bankAcc.id, categoryId: cat ? cat.id : null,
-        included: tpl.amount != null || isTutoring, recurring: true, month: scenario.targetMonth, day
+        included: tpl.amount != null || isTutoring, recurring: true, month: scenario.targetMonth, day,
+        occurrencesPerMonth: isTutoring ? 8 : 1
       });
     });
     // An active installment plan (תשלום X מתוך Y) gets its own line with a
