@@ -39,15 +39,33 @@ PF.views.dashboard = function (root) {
   const liquidAccounts = data.accounts.filter(a => !PF.accounts.EXCLUDED_FROM_TOTAL.includes(a.type));
   const totalBreakdown = liquidAccounts.filter(a => a.type !== "cash" && a.type !== "bit");
   // liquidTotal already deducts a card purchase the moment it's logged (the
-  // right number for "what's really free to spend"). This is the OTHER
-  // total — what your accounts would ACTUALLY show right now, combined —
-  // only shown when it differs, i.e. some account has a card charge still
-  // open (see PF.accounts.pendingCardCharges/realCurrentBalance).
+  // right number for "what's really free to spend"). realTotal is the OTHER
+  // total — what your accounts would ACTUALLY show right now, combined. Shown
+  // as a clear "before / after" pair instead of one number with a buried
+  // footnote, since the two can look contradictory without that framing.
   const realTotal = Math.round(liquidAccounts.reduce((s, a) => s + PF.accounts.realCurrentBalance(a.id), 0) * 100) / 100;
-  const realTotalNote = realTotal !== liquidTotal
-    ? h("div", { class: "kpi-breakdown-row", style: "margin-top:4px" }, [h("span", {}, ["בפועל בחשבונות כרגע"]), h("b", {}, [money(realTotal)])])
-    : null;
-  statsGrid.appendChild(kpiTile("total", "יתרה כוללת", liquidTotal, totalBreakdown.length ? totalBreakdown.map(a => [a.name, PF.accounts.balance(a.id), PF.accounts.realCurrentBalance(a.id)]) : null, realTotalNote));
+  statsGrid.appendChild(h("div", { class: "kpi-tile kpi-tile-wide" }, [
+    h("div", { class: "kpi-icon kpi-icon-total", html: kpiIconSvg("total") }),
+    h("div", { class: "kpi-body" }, [
+      h("span", { class: "label" }, ["יתרה כוללת"]),
+      h("div", { class: "kpi-pair" }, [
+        h("div", {}, [h("span", { class: "kpi-sublabel" }, ["בבנק כרגע"]), h("span", { class: "value " + (realTotal >= 0 ? "positive" : "negative") }, [money(realTotal)])]),
+        h("div", {}, [h("span", { class: "kpi-sublabel" }, ["אחרי חיובי כרטיס שטרם נגבו"]), h("span", { class: "value " + (liquidTotal >= 0 ? "positive" : "negative") }, [money(liquidTotal)])])
+      ]),
+      // Per-account math — this is where "how does 1,554 become 716" is
+      // actually shown, not just asserted: real balance minus whatever card
+      // spending hasn't left that account yet equals the ledger figure.
+      totalBreakdown.length ? h("div", { class: "kpi-breakdown" }, totalBreakdown.map(a => {
+        const ledger = PF.accounts.balance(a.id);
+        const pending = PF.accounts.pendingCardCharges(a.id);
+        const real = PF.accounts.realCurrentBalance(a.id);
+        return h("div", { class: "kpi-breakdown-row" }, [
+          h("span", {}, [a.name]),
+          h("b", {}, [pending ? `${money(real)} − ${money(pending)} = ${money(ledger)}` : money(ledger)])
+        ]);
+      })) : null
+    ])
+  ]));
 
   // Loan debt, broken down the same way if there's more than one loan.
   const loans = PF.loans.all();
@@ -83,18 +101,14 @@ PF.views.dashboard = function (root) {
 
   root.appendChild(h("div", { class: "card" }, [h("h2", {}, ["סקירה כללית"]), statsGrid]));
 
-  function kpiTile(iconName, label, value, breakdown, extraNote) {
+  function kpiTile(iconName, label, value, breakdown) {
     return h("div", { class: "kpi-tile" }, [
       h("div", { class: `kpi-icon kpi-icon-${iconName}`, html: kpiIconSvg(iconName) }),
       h("div", { class: "kpi-body" }, [
         h("span", { class: "label" }, [label]),
         h("span", { class: "value " + (value >= 0 ? "positive" : "negative") }, [money(value)]),
-        extraNote || null,
         breakdown ? h("div", { class: "kpi-breakdown" },
-          breakdown.map(([name, val, realVal]) => h("div", { class: "kpi-breakdown-row" }, [
-            h("span", {}, [name]),
-            h("b", {}, [realVal != null && realVal !== val ? `${money(val)} (בבנק כרגע: ${money(realVal)})` : money(val)])
-          ]))
+          breakdown.map(([name, val]) => h("div", { class: "kpi-breakdown-row" }, [h("span", {}, [name]), h("b", {}, [money(val)])]))
         ) : null
       ])
     ]);
