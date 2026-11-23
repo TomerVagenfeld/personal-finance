@@ -270,6 +270,25 @@ PF.views.simulate = function (root) {
     const chartLabels = allDates.map(dayLabel);
     const liquidSeries = fillSeries(dailyTrace);
     const baselineSeries = fillSeries(baselineDailyTrace);
+
+    // Which item(s) actually landed/left on a given date, for the tooltip —
+    // a date can have more than one (e.g. several card-billing-day expenses
+    // all on the 10th), so each date maps to a list, not a single item.
+    function eventsByDate(trace) {
+      const map = new Map();
+      trace.forEach(p => {
+        if (!p.label) return; // the seed "today" point carries no item
+        if (!map.has(p.date)) map.set(p.date, []);
+        map.get(p.date).push({ label: p.label, type: p.type, amount: p.amount });
+      });
+      return map;
+    }
+    const scenarioEvents = eventsByDate(dailyTrace);
+    const baselineEvents = eventsByDate(baselineDailyTrace);
+    function eventLines(date, type) {
+      const events = (type === "baseline" ? baselineEvents : scenarioEvents).get(date) || [];
+      return events.map(e => `${e.type === "expense" ? "−" : e.type === "income" ? "+" : "⇄"}${money(e.amount)} ${e.label}`);
+    }
     const hasScenarios = items.some(it => it.kind === "custom" && it.included && it.amount);
 
     // Monthly cash flow: every included income/expense item that applies in
@@ -336,7 +355,18 @@ PF.views.simulate = function (root) {
         options: {
           responsive: true, maintainAspectRatio: false,
           interaction: { mode: "nearest", intersect: false },
-          plugins: { tooltip: { callbacks: { label: context => `${context.dataset.label}: ${money(context.parsed.y)}` } } }
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: context => {
+                  const lines = [`${context.dataset.label}: ${money(context.parsed.y)}`];
+                  const date = allDates[context.dataIndex];
+                  const type = context.datasetIndex === 0 ? "baseline" : "scenario";
+                  return lines.concat(eventLines(date, type));
+                }
+              }
+            }
+          }
         }
       });
 

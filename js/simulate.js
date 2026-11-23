@@ -235,7 +235,10 @@ PF.simulate = (function () {
         const liquidVal = liquidNow();
         if (liquidVal < minLiquid.value) minLiquid = { value: liquidVal, day };
         checkNegative(m, day);
-        dailyTrace.push({ date: dateForDay(m, day), value: liquidVal });
+        // label/type/amount travel with each point so the chart's tooltip can
+        // say WHAT happened that day (income landing, a card-billing-day
+        // expense leaving...), not just show the resulting balance number.
+        dailyTrace.push({ date: dateForDay(m, day), value: liquidVal, label: it.label, type: it.type, amount: it.amount });
       }
       for (const id in balances) balances[id] = Math.round(balances[id] * 100) / 100;
       timeline.push({ month: m, balances: { ...balances } });
